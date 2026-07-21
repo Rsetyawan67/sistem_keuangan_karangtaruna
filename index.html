@@ -759,6 +759,10 @@
     </div>
 
     <script>
+        // ===== SUPABASE CONFIG =====
+        const SUPABASE_URL = 'https://lfndgyufibqoiqdlofce.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxmbmRneXVmaWJxb2lxZGxvZmNlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQ2MDg2MzcsImV4cCI6MjEwMDE4NDYzN30.5eviTOMiqaib394C5gYt8nCeWc6CYubtJ8d39NvSuLg';
+
         // ===== DATA =====
         const KATEGORI = {
             pemasukan: ['Iuran Anggota', 'Donasi', 'Kas Mingguan', 'Sponsorship', 'Dana Desa', 'Lain-lain'],
@@ -767,25 +771,79 @@
 
         let transactions = [];
         let chartInstance = null;
+        let isLoadingData = false;
+
+        // ===== SUPABASE HELPERS =====
+        async function supabaseFetch(method, params = {}) {
+            const url = new URL(`${SUPABASE_URL}/rest/v1/transactions`);
+            const bodyData = params.body;
+            delete params.body;
+            
+            Object.keys(params).forEach(k => url.searchParams.set(k, params[k]));
+
+            const res = await fetch(url, {
+                method,
+                headers: {
+                    'apikey': SUPABASE_ANON_KEY,
+                    'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+                    'Content-Type': 'application/json',
+                    'Prefer': 'return=representation'
+                },
+                body: method !== 'GET' && method !== 'DELETE' ? JSON.stringify(bodyData) : undefined
+            });
+            if (!res.ok) throw new Error(`Supabase error: ${res.status}`);
+            if (method === 'DELETE') return null;
+            return res.status === 204 ? null : await res.json();
+        }
 
         // ===== INIT =====
         document.addEventListener('DOMContentLoaded', () => {
-            loadData();
-            renderAll();
+            loadFromSupabase();
             document.getElementById('laporanBulan').value = new Date().toISOString().slice(0,7);
-            renderLaporan();
         });
 
-        // ===== LOCAL STORAGE =====
-        function loadData() {
+        // ===== LOAD FROM SUPABASE =====
+        async function loadFromSupabase() {
+            isLoadingData = true;
             try {
-                const saved = localStorage.getItem('keuangan_karangtaruna');
-                if (saved) transactions = JSON.parse(saved);
-            } catch(e) { transactions = []; }
+                const data = await supabaseFetch('GET', { order: 'createdAt.desc' });
+                transactions = data || [];
+            } catch(e) {
+                console.warn('Gagal load dari Supabase, fallback ke LocalStorage:', e);
+                // Fallback ke localStorage
+                try {
+                    const saved = localStorage.getItem('keuangan_karangtaruna');
+                    if (saved) transactions = JSON.parse(saved);
+                } catch(ee) { transactions = []; }
+            }
+            isLoadingData = false;
+            renderAll();
         }
 
-        function saveData() {
-            localStorage.setItem('keuangan_karangtaruna', JSON.stringify(transactions));
+        // ===== SYNC TO SUPABASE =====
+        async function syncToSupabase() {
+            try {
+                // Ambil semua data dari Supabase dulu
+                const existing = await supabaseFetch('GET', { select: 'id' });
+                const existingIds = new Set((existing || []).map(t => t.id));
+                
+                // Hapus data lokal yang tidak ada di Supabase
+                for (const t of transactions) {
+                    if (!existingIds.has(t.id)) {
+                        await supabaseFetch('POST', { body: t });
+                    }
+                }
+                // Hapus data Supabase yang tidak ada di lokal
+                for (const e of (existing || [])) {
+                    if (!transactions.some(t => t.id === e.id)) {
+                        await supabaseFetch('DELETE', { id: `eq.${e.id}` });
+                    }
+                }
+            } catch(e) {
+                console.warn('Gagal sync ke Supabase:', e);
+                // Fallback ke localStorage
+                localStorage.setItem('keuangan_karangtaruna', JSON.stringify(transactions));
+            }
         }
 
         // ===== FORMAT RUPIAH =====
@@ -847,7 +905,7 @@
         }
 
         // ===== CRUD TRANSAKSI =====
-        function simpanTransaksi(e) {
+        async function simpanTransaksi(e) {
             e.preventDefault();
             const id = document.getElementById('editId').value;
             const data = {
@@ -863,29 +921,43 @@
                 return;
             }
 
-            if (id) {
-                const idx = transactions.findIndex(t => t.id === id);
-                if (idx !== -1) transactions[idx] = { ...transactions[idx], ...data };
-            } else {
-                data.id = Date.now().toString(36) + Math.random().toString(36).slice(2,5);
-                data.createdAt = new Date().toISOString();
-                transactions.unshift(data);
+            try {
+                if (id) {
+                    // UPDATE
+                    await supabaseFetch('PATCH', { id: `eq.${id}`, body: data });
+                    const idx = transactions.findIndex(t => t.id === id);
+                    if (idx !== -1) transactions[idx] = { ...transactions[idx], ...data };
+                } else {
+                    // CREATE
+                    data.id = Date.now().toString(36) + Math.random().toString(36).slice(2,5);
+                    data.createdAt = new Date().toISOString();
+                    await supabaseFetch('POST', { body: data });
+                    transactions.unshift(data);
+                }
+            } catch(e) {
+                alert('Gagal menyimpan ke database. Cek koneksi internet Anda.');
+                console.error(e);
+                return;
             }
 
-            saveData();
             closeModal();
             renderAll();
             const page = document.querySelector('.sidebar-nav a.active');
             if (page) showPage(page.dataset.page);
         }
 
-        function hapusTransaksi(id) {
+        async function hapusTransaksi(id) {
             if (!confirm('Yakin ingin menghapus transaksi ini?')) return;
-            transactions = transactions.filter(t => t.id !== id);
-            saveData();
-            renderAll();
-            const page = document.querySelector('.sidebar-nav a.active');
-            if (page) showPage(page.dataset.page);
+            try {
+                await supabaseFetch('DELETE', { id: `eq.${id}` });
+                transactions = transactions.filter(t => t.id !== id);
+                renderAll();
+                const page = document.querySelector('.sidebar-nav a.active');
+                if (page) showPage(page.dataset.page);
+            } catch(e) {
+                alert('Gagal menghapus. Cek koneksi internet Anda.');
+                console.error(e);
+            }
         }
 
         function editTransaksi(id) {
