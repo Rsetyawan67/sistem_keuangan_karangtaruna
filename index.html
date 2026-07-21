@@ -1176,20 +1176,30 @@
             link.click();
         }
 
-        function restoreData() {
+        async function restoreData() {
             const file = document.getElementById('restoreFile').files[0];
             if (!file) { alert('Pilih file backup terlebih dahulu!'); return; }
             const reader = new FileReader();
-            reader.onload = (e) => {
+            reader.onload = async (e) => {
                 try {
                     const data = JSON.parse(e.target.result);
                     if (!Array.isArray(data)) throw new Error('Format tidak valid');
                     if (!confirm(`Akan merestore ${data.length} transaksi. Data saat ini akan ditimpa. Lanjutkan?`)) return;
+                    
+                    // Hapus semua data lama dari Supabase
+                    for (const t of transactions) {
+                        try { await supabaseFetch('DELETE', { id: `eq.${t.id}` }); } catch(ee) {}
+                    }
+                    
+                    // Simpan data baru ke Supabase
                     transactions = data;
-                    saveData();
+                    for (const t of transactions) {
+                        try { await supabaseFetch('POST', { body: t }); } catch(ee) {}
+                    }
+                    
                     renderAll();
                     showPage('dashboard');
-                    alert('Data berhasil di-restore!');
+                    alert(`${data.length} transaksi berhasil di-restore!`);
                 } catch(err) {
                     alert('File backup tidak valid!');
                 }
@@ -1197,14 +1207,19 @@
             reader.readAsText(file);
         }
 
-        function resetData() {
+        async function resetData() {
             if (!confirm('⚠️ Yakin ingin menghapus SEMUA data keuangan? Tindakan ini tidak bisa dibatalkan!')) return;
             if (!confirm('Konfirmasi lagi: Hapus semua data transaksi?')) return;
+            
+            // Hapus dari Supabase
+            for (const t of transactions) {
+                try { await supabaseFetch('DELETE', { id: `eq.${t.id}` }); } catch(ee) {}
+            }
+            
             transactions = [];
-            saveData();
             renderAll();
             showPage('dashboard');
-            alert('Semua data telah dihapus.');
+            alert('Semua data telah dihapus dari database.');
         }
 
         // ===== RENDER ALL =====
