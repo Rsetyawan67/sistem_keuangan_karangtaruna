@@ -553,7 +553,7 @@
             <a href="#" class="active" data-page="dashboard" onclick="showPage('dashboard')">
                 <span class="icon">📊</span> Dashboard
             </a>
-            <a href="#" data-page="transaksi" onclick="showPage('transaksi')" class="menu-admin">
+            <a href="#" data-page="transaksi" onclick="showPage('transaksi')" class="menu-warga">
                 <span class="icon">💳</span> Transaksi
             </a>
             <a href="#" data-page="laporan" onclick="showPage('laporan')">
@@ -587,8 +587,8 @@
                     <p class="subtitle">Ringkasan Keuangan Karangtaruna</p>
                 </div>
                 <div class="header-actions">
-                    <button class="btn btn-primary" onclick="showPage('transaksi')">+ Transaksi Baru</button>
-                    <button class="btn btn-outline" onclick="exportCSV()">📥 Export CSV</button>
+                    <button class="btn btn-primary btn-transaksi" onclick="showPage('transaksi')">+ Transaksi Baru</button>
+                    <button class="btn btn-outline btn-export" onclick="exportCSV()">📥 Export CSV</button>
                     <button class="btn btn-outline" onclick="window.print()">🖨️ Cetak</button>
                 </div>
             </div>
@@ -659,8 +659,8 @@
                     <p class="subtitle">Tambah & Kelola Pemasukan / Pengeluaran</p>
                 </div>
                 <div class="header-actions">
-                    <button class="btn btn-success" onclick="openModal('pemasukan')">+ Pemasukan</button>
-                    <button class="btn btn-danger" onclick="openModal('pengeluaran')">- Pengeluaran</button>
+                    <button class="btn btn-success btn-transaksi" onclick="openModal('pemasukan')">+ Pemasukan</button>
+                    <button class="btn btn-danger btn-transaksi" onclick="openModal('pengeluaran')">- Pengeluaran</button>
                 </div>
             </div>
 
@@ -685,7 +685,7 @@
                                 <th>Kategori</th>
                                 <th>Jenis</th>
                                 <th class="text-right">Jumlah</th>
-                                <th class="text-right">Aksi</th>
+                                <th class="text-right th-aksi">Aksi</th>
                             </tr>
                         </thead>
                         <tbody id="transaksiTable"></tbody>
@@ -916,11 +916,19 @@
                 document.querySelector('.sidebar').style.display = 'flex';
                 
                 document.getElementById('userNameDisplay').textContent = user.nama;
-                document.getElementById('userRoleDisplay').textContent = user.role === 'admin' ? '👑 Admin' : '👤 Pengguna';
+                const roleMap = { 'admin': '👑 Admin', 'user': '👤 Pengguna', 'warga': '👀 Warga' };
+                document.getElementById('userRoleDisplay').textContent = roleMap[user.role] || '👤 Pengguna';
                 
+                // Sembunyikan menu berdasarkan role
                 document.querySelectorAll('.menu-admin').forEach(el => {
                     el.style.display = user.role === 'admin' ? 'flex' : 'none';
                 });
+                document.querySelectorAll('.menu-warga').forEach(el => {
+                    el.style.display = user.role === 'admin' || user.role === 'user' ? 'flex' : 'none';
+                });
+                
+                // Update UI berdasarkan role
+                updateUIBasedOnRole(user.role);
                 
                 loadFromSupabase();
                 document.getElementById('laporanBulan').value = new Date().toISOString().slice(0,7);
@@ -953,13 +961,38 @@
                 document.querySelector('.main').style.display = 'block';
                 document.querySelector('.sidebar').style.display = 'flex';
                 document.getElementById('userNameDisplay').textContent = currentUser.nama;
-                document.getElementById('userRoleDisplay').textContent = currentUser.role === 'admin' ? '👑 Admin' : '👤 Pengguna';
+                const roleMap = { 'admin': '👑 Admin', 'user': '👤 Pengguna', 'warga': '👀 Warga' };
+                document.getElementById('userRoleDisplay').textContent = roleMap[currentUser.role] || '👤 Pengguna';
                 document.querySelectorAll('.menu-admin').forEach(el => {
                     el.style.display = currentUser.role === 'admin' ? 'flex' : 'none';
                 });
+                document.querySelectorAll('.menu-warga').forEach(el => {
+                    el.style.display = currentUser.role === 'admin' || currentUser.role === 'user' ? 'flex' : 'none';
+                });
+                updateUIBasedOnRole(currentUser.role);
                 return true;
             }
             return false;
+        }
+
+        // ===== UPDATE UI BASED ON ROLE =====
+        function updateUIBasedOnRole(role) {
+            const isEditor = role === 'admin' || role === 'user';
+            
+            // Tombol tambah transaksi
+            document.querySelectorAll('.btn-transaksi').forEach(el => {
+                el.style.display = isEditor ? 'inline-flex' : 'none';
+            });
+            
+            // Kolom aksi di tabel transaksi
+            document.querySelectorAll('.col-aksi, .th-aksi').forEach(el => {
+                el.style.display = isEditor ? 'table-cell' : 'none';
+            });
+            
+            // Semua bisa lihat dashboard, laporan, export
+            document.querySelectorAll('.btn-export').forEach(el => {
+                el.style.display = 'inline-flex';
+            });
         }
 
         // ===== SUPABASE HELPERS (TRANSACTIONS) =====
@@ -1290,7 +1323,7 @@
                         <td>${t.kategori}</td>
                         <td><span class="tag ${t.jenis}">${t.jenis === 'pemasukan' ? '💰 Masuk' : '💸 Keluar'}</span></td>
                         <td class="text-right ${t.jenis === 'pemasukan' ? 'text-green' : 'text-red'}">${t.jenis === 'pemasukan' ? '+' : '-'} ${formatRupiah(t.jumlah)}</td>
-                        <td class="text-right">
+                        <td class="text-right col-aksi">
                             <div class="action-btns" style="justify-content:flex-end;">
                                 <button class="btn btn-outline btn-sm" onclick="editTransaksi('${t.id}')">✏️</button>
                                 <button class="btn btn-danger btn-sm" onclick="hapusTransaksi('${t.id}')">🗑️</button>
