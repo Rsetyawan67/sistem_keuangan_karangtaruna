@@ -208,8 +208,8 @@
         <a class="active" onclick="showPage('dashboard')"><span class="icon">&#128202;</span> Dashboard</a>
         <a onclick="showPage('transaksi')"><span class="icon">&#128179;</span> Transaksi</a>
         <a onclick="showPage('laporan')"><span class="icon">&#128196;</span> Laporan</a>
-        <a onclick="showPage('struktural')"><span class="icon">&#127963;</span> Struktural</a>
-        <a onclick="showPage('kelola')"><span class="icon">&#128190;</span> Kelola Data</a>
+        <a id="menuStruktural" onclick="showPage('struktural')"><span class="icon">&#127963;</span> Struktural</a>
+        <a id="menuKelola" onclick="showPage('kelola')"><span class="icon">&#128190;</span> Kelola Data</a>
     </nav>
     <div class="sidebar-footer">
         <div class="user-info">&#128100; <span id="sidebarUsername">-</span> (<span id="sidebarRole">-</span>)</div>
@@ -237,7 +237,7 @@
     <section class="page-section" id="page-transaksi">
         <div class="page-header">
             <div><h2>&#128179; Transaksi</h2><p class="subtitle">Kelola pemasukan &amp; pengeluaran</p></div>
-            <div class="header-actions"><button class="btn btn-primary" onclick="openModalTransaksi()">&#10133; Tambah</button></div>
+            <div class="header-actions"><span id="btnTambahTransaksi"><button class="btn btn-primary" onclick="openModalTransaksi()">&#10133; Tambah</button></span></div>
         </div>
         <div class="card">
             <div class="filter-bar">
@@ -274,8 +274,8 @@
             <div><h2>&#127963; Struktural Organisasi</h2><p class="subtitle">Pengurus Karangtaruna Putra Jatiwangi</p></div>
             <div class="header-actions">
                 <span class="sync-status offline" id="syncStatus">&#128308; Offline</span>
-                <button class="btn btn-primary" onclick="openModalStruktural()">&#10133; Tambah</button>
-                <button class="btn btn-outline" onclick="syncFromSupabase()">&#128260; Sync</button>
+                <span id="btnTambahStruktural"><button class="btn btn-primary" onclick="openModalStruktural()">&#10133; Tambah</button></span>
+                <span id="btnSyncStruktural"><button class="btn btn-outline" onclick="syncFromSupabase()">&#128260; Sync</button></span>
             </div>
         </div>
         <div id="strukturalContainer" class="card"></div>
@@ -325,7 +325,15 @@ function getNow() { return new Date().toISOString().slice(0,10); }
 function getCurrentMonth() { return String(new Date().getMonth()+1).padStart(2,'0'); }
 function getCurrentYear() { return String(new Date().getFullYear()); }
 function generateId() { return Date.now().toString(36) + Math.random().toString(36).slice(2,8); }
-function getRoleLevel(r) { return { Ketua:1, Sekretaris:2, Bendahara:2, Anggota:3 }[r] || 3; }
+function getRoleLevel(r) { 
+    const map = { 
+        'admin': 0, 'ketua': 1, 'Ketua': 1, 
+        'sekretaris': 2, 'Sekretaris': 2, 
+        'bendahara': 2, 'Bendahara': 2, 
+        'anggota': 3, 'Anggota': 3 
+    }; 
+    return map[r] !== undefined ? map[r] : 3; 
+}
 function canAccess(m) {
     if (!currentUser) return false;
     const r = currentUser.role;
@@ -425,6 +433,21 @@ function showPage(page) {
 function toggleSidebar() { document.getElementById('sidebar').classList.toggle('open'); }
 
 function initApp() {
+    // Sembunyikan menu & tombol berdasarkan role
+    const isAnggota = getRoleLevel(currentUser.role) > 2;
+    const canManageStruktural = ['admin','ketua','Sekretaris'].includes(currentUser.role);
+    if (isAnggota) {
+        document.getElementById('btnTambahTransaksi').style.display = 'none';
+        document.getElementById('menuKelola').style.display = 'none';
+    }
+    // Menu Struktural tetap terlihat untuk SEMUA role (bisa melihat)
+    // Sembunyikan tombol header Struktural jika bukan admin/ketua/sekretaris
+    if (!canManageStruktural) {
+        const btnTambah = document.getElementById('btnTambahStruktural');
+        const btnSync = document.getElementById('btnSyncStruktural');
+        if (btnTambah) btnTambah.style.display = 'none';
+        if (btnSync) btnSync.style.display = 'none';
+    }
     populateFilters(); renderDashboard(); renderTransaksi(); renderLaporan(); renderStruktural();
     syncStrukturalFromSupabase();
     document.addEventListener('click', function(e) {
@@ -570,8 +593,7 @@ function exportCSV() {
 const JABATAN_ORDER = ['Ketua','Wakil Ketua','Sekretaris','Bendahara','Seksi'];
 
 function renderStruktural() {
-    if(!canAccess('struktural')&&strukturalData.length===0){ document.getElementById('strukturalContainer').innerHTML='<div class="empty-state"><div class="icon">&#128274;</div><h4>Akses Terbatas</h4><p>Hanya Ketua dan Sekretaris yang dapat mengelola struktural.</p></div>'; return; }
-    if(strukturalData.length===0){ document.getElementById('strukturalContainer').innerHTML='<div class="empty-state"><div class="icon">&#127963;</div><h4>Belum Ada Data Struktural</h4><p>Klik "Tambah" untuk menambahkan pengurus.</p></div>'+(canAccess('struktural')?'<div class="org-actions"><button class="btn btn-primary" onclick="openModalStruktural()">&#10133; Tambah Pengurus</button></div>':''); return; }
+    if(strukturalData.length===0){ document.getElementById('strukturalContainer').innerHTML='<div class="empty-state"><div class="icon">&#127963;</div><h4>Belum Ada Data Struktural</h4><p>Data pengurus belum tersedia.</p></div>'+(canAccess('struktural')?'<div class="org-actions"><button class="btn btn-primary" onclick="openModalStruktural()">&#10133; Tambah Pengurus</button></div>':''); return; }
     const grouped={}; JABATAN_ORDER.forEach(j=>grouped[j]=[]);
     strukturalData.forEach(item=>{ const j=item.jabatan; if(grouped[j]) grouped[j].push(item); else grouped[JABATAN_ORDER[JABATAN_ORDER.length-1]].push(item); });
     let html='<div class="org-tree">';
@@ -592,6 +614,7 @@ function renderStruktural() {
 }
 
 function openModalStruktural(data) {
+    if(!canAccess('struktural')) { alert('Hanya admin, ketua, dan sekretaris yang dapat mengelola data struktural!'); return; }
     const isEdit=data!==null&&data!==undefined;
     document.getElementById('modalTitle').textContent=isEdit?'Edit Pengurus':'Tambah Pengurus';
     document.getElementById('modalSaveBtn').dataset.id=isEdit?data.id:'';

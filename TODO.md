@@ -36,3 +36,9 @@
 - [ ] Buka Supabase Dashboard → SQL Editor → jalankan `supabase-schema.sql`
 - [ ] Tes fitur "Simpan ke Cloud" dan "Sync dari Cloud"
 
+## 📝 Catatan
+- File `index_corrupted.html` sudah dihapus (file backup yang tidak lengkap)
+- File `index.html` sudah di-rebuild total dengan semua fitur termasuk Struktural Organisasi + Supabase Sync
+- Username login: `admin` / `sekretaris` / `bendahara` / `warga`
+- Password: username + `123` (contoh: admin → admin123)
+
