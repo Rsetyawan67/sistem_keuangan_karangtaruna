@@ -209,7 +209,8 @@
         <a onclick="showPage('transaksi')"><span class="icon">&#128179;</span> Transaksi</a>
         <a onclick="showPage('laporan')"><span class="icon">&#128196;</span> Laporan</a>
         <a id="menuStruktural" onclick="showPage('struktural')"><span class="icon">&#127963;</span> Struktural</a>
-        <a id="menuKelola" onclick="showPage('kelola')"><span class="icon">&#128190;</span> Kelola Data</a>
+<a id="menuKelola" onclick="showPage('kelola')"><span class="icon">&#128190;</span> Kelola Data</a>
+        <a onclick="showPage('pengaturan')"><span class="icon">&#9881;&#65039;</span> Pengaturan</a>
     </nav>
     <div class="sidebar-footer">
         <div class="user-info">&#128100; <span id="sidebarUsername">-</span> (<span id="sidebarRole">-</span>)</div>
@@ -237,7 +238,10 @@
     <section class="page-section" id="page-transaksi">
         <div class="page-header">
             <div><h2>&#128179; Transaksi</h2><p class="subtitle">Kelola pemasukan &amp; pengeluaran</p></div>
-            <div class="header-actions"><span id="btnTambahTransaksi"><button class="btn btn-primary" onclick="openModalTransaksi()">&#10133; Tambah</button></span></div>
+            <div class="header-actions">
+                <span class="sync-status offline" id="transaksiSyncStatus">&#128308; Offline</span>
+                <span id="btnTambahTransaksi"><button class="btn btn-primary" onclick="openModalTransaksi()">&#10133; Tambah</button></span>
+            </div>
         </div>
         <div class="card">
             <div class="filter-bar">
@@ -279,13 +283,7 @@
             </div>
         </div>
         <div id="strukturalContainer" class="card"></div>
-    </section>
 
-    <!-- KELOLA DATA -->
-    <section class="page-section" id="page-kelola">
-        <div class="page-header"><div><h2>&#128190; Kelola Data</h2><p class="subtitle">Backup, restore, dan reset data keuangan</p></div></div>
-        <div class="stats-grid">
-            <div class="card"><div class="card-title">&#128229; Backup Data</div><p style="color:var(--text-secondary);margin-bottom:16px;font-size:14px;">Download seluruh data keuangan sebagai file JSON.</p><button class="btn btn-primary" onclick="backupData()">&#65039; Download Backup</button></div>
             <div class="card"><div class="card-title">&#128228; Restore Data</div><p style="color:var(--text-secondary);margin-bottom:16px;font-size:14px;">Upload file JSON backup untuk mengembalikan data.</p><input type="file" id="restoreFile" accept=".json" style="margin-bottom:12px;display:block;" /><button class="btn btn-warning" onclick="restoreData()">&#128228; Restore Data</button></div>
             <div class="card"><div class="card-title">&#128465;&#65039; Reset Semua Data</div><p style="color:var(--text-secondary);margin-bottom:16px;font-size:14px;">Hapus semua data transaksi dari penyimpanan lokal.</p><button class="btn btn-danger" onclick="resetData()">&#128465;&#65039; Reset Data</button></div>
         </div>
@@ -309,6 +307,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 
 const DEFAULT_USERS = [
     { username:'admin', password:'admin123', role:'admin', nama:'administator' },
+    { username:'ketua', password:'ketua123', role:'Ketua', nama:'Ketua Karangtaruna' },
     { username:'sekretaris', password:'sekretaris123', role:'Sekretaris', nama:'Sekretaris Karangtaruna' },
     { username:'bendahara', password:'bendahara123', role:'Bendahara', nama:'Bendahara Karangtaruna' },
     { username:'warga', password:'warga123', role:'Anggota', nama:'Anggota Karangtaruna' }
@@ -346,7 +345,48 @@ function loadData() {
     try { const d=localStorage.getItem('keuangan_data'); if(d) transaksi=JSON.parse(d); } catch(e){ transaksi=[]; }
     try { const s=localStorage.getItem('struktural_data'); if(s) strukturalData=JSON.parse(s); } catch(e){ strukturalData=[]; }
 }
-function saveTransaksi() { localStorage.setItem('keuangan_data', JSON.stringify(transaksi)); }
+function setTransaksiSyncStatus(state,text) { const el=document.getElementById('transaksiSyncStatus'); if(el){ el.className='sync-status '+state; el.textContent=text; } }
+async function syncTransaksiToSupabase() {
+    setTransaksiSyncStatus('loading','Menyimpan ke Cloud...');
+    await supabaseFetch('DELETE','transaksi?select=id');
+    for (const item of transaksi) {
+        await supabaseFetch('POST','transaksi', {
+            id:item.id, jenis:item.jenis, tanggal:item.tanggal,
+            keterangan:item.keterangan, kategori:item.kategori||'',
+            jumlah:item.jumlah, created_at:item.created_at||new Date().toISOString()
+        });
+    }
+    setTransaksiSyncStatus('online','Tersimpan di Cloud');
+}
+async function syncTransaksiFromSupabase() {
+    setTransaksiSyncStatus('loading','Memuat dari Cloud...');
+    const data = await supabaseFetch('GET','transaksi?select=*&order=tanggal.desc');
+    if (data && !data.error && data.length>0) {
+        transaksi = data;
+        saveTransaksi();
+        renderTransaksi();
+        renderDashboard();
+        renderLaporan();
+        setTransaksiSyncStatus('online','Tersinkron ('+data.length+' data)');
+        return true;
+    } else if (data && data.error) {
+        setTransaksiSyncStatus('offline','Gagal: '+data.error);
+        return false;
+    } else {
+        // Tidak ada data di cloud, upload data lokal jika ada
+        if (transaksi.length>0) {
+            await syncTransaksiToSupabase();
+        } else {
+            setTransaksiSyncStatus('offline','Belum ada data');
+        }
+        return false;
+    }
+}
+function saveTransaksi() { 
+    localStorage.setItem('keuangan_data', JSON.stringify(transaksi)); 
+    // Auto sync to cloud in background
+    syncTransaksiToSupabase().catch(e=>{ setTransaksiSyncStatus('offline','Gagal sync'); });
+}
 function saveStrukturalLocal() { localStorage.setItem('struktural_data', JSON.stringify(strukturalData)); }
 
 async function supabaseFetch(method, path, body) {
@@ -438,9 +478,9 @@ function initApp() {
     const canManageStruktural = ['admin','ketua','Sekretaris'].includes(currentUser.role);
     if (isAnggota) {
         document.getElementById('btnTambahTransaksi').style.display = 'none';
-        document.getElementById('menuKelola').style.display = 'none';
     }
     // Menu Struktural tetap terlihat untuk SEMUA role (bisa melihat)
+    // sembunyikan tombol Kelola data jika bukan admin/ketua/sekretaris
     // Sembunyikan tombol header Struktural jika bukan admin/ketua/sekretaris
     if (!canManageStruktural) {
         const btnTambah = document.getElementById('btnTambahStruktural');
@@ -450,6 +490,7 @@ function initApp() {
     }
     populateFilters(); renderDashboard(); renderTransaksi(); renderLaporan(); renderStruktural();
     syncStrukturalFromSupabase();
+    syncTransaksiFromSupabase();
     document.addEventListener('click', function(e) {
         const s=document.getElementById('sidebar'), h=document.getElementById('hamburgerBtn');
         if (window.innerWidth<=768 && s.classList.contains('open') && !s.contains(e.target) && !h.contains(e.target)) s.classList.remove('open');
