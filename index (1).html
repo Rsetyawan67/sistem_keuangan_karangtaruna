@@ -4,12 +4,12 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Sistem Keuangan - Karangtaruna Putra Jatiwangi</title>
-    <!-- Konfigurasi PWA -->
-<link rel="manifest" href="https://keuanganjatiwangi.my.id/manifest.json">
+    <!-- Konfigurasi PWA untuk GitHub Pages -->
+<link rel="manifest" href="./manifest.json">
 <meta name="theme-color" content="#2563eb">
 <script>
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('/sw.js')
+    navigator.serviceWorker.register('./sw.js')
       .then(() => console.log('Service Worker Terdaftar'))
       .catch((err) => console.log('Service Worker Gagal:', err));
   }

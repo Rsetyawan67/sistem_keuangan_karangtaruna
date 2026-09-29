@@ -1,8 +1,5 @@
 const CACHE_NAME = "kas-jatiwangi-v1";
-const urlsToCache = [
-  "https://keuanganjatiwangi.my.id/",
-  "https://keuanganjatiwangi.my.id/index.html",
-];
+const urlsToCache = ["./", "./index.html"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
